@@ -1,0 +1,817 @@
+# Anthony Simpkins
+##### Loading in Dataset ####
+
+library(rvest)
+library(dplyr)
+library(httr)
+
+file_path <- "C:/Users/simpk/OneDrive/Desktop/ECO4444/R/DATA/hmda_sw-1.txt"
+
+# Read the text file into a data frame
+hmda_data <- read.table(file_path, header = TRUE, sep = "\t", stringsAsFactors = FALSE)
+
+# Renamed columns for - A. Loan Information AND B. Property Location
+colnames(hmda_data)[c(2, 3, 4, 5, 6, 7, 8)] <- c("Loan_Type", "Loan_Purpose",
+                                                 "Occupancy", "Loan_Amount", "Action_Taken",
+                                                 "MSA_Number", "County")
+
+# Renamed columns for C. Applicant Information
+colnames(hmda_data)[c(9, 10, 11, 12, 13)] <- c("Appl_Race", "Coappl_Race", 
+                                               "Appl_Sex", "Coappl_Sex",
+                                               "Appl_Income")
+
+# Renamed columns for D. Other Loan Information
+colnames(hmda_data)[c(14, 15)] <- c("Loan_Purchsr", "Denial_Reason")
+
+
+# Rename columns for III. Follow-up Survey Data Pg.1
+colnames(hmda_data)[c(16:37)] <- c(
+  "Denial_AddCorr1",
+  "Denial_AddCorr2",
+  "Denial_AddCorr3",
+  "No_Units_Prop_Purch",
+  "Marital_Status",
+  "No_Dependents_Claimed",
+  "Yrs_Empl_Line_Work",
+  "Yrs_Empl_Job",
+  "Self_Empl",
+  "Base_Empl_Mthly_Inc_Appl",
+  "Base_Empl_Mthly_Inc_Coappl",
+  "Total_Mthly_Inc_Appl",
+  "Total_Mthly_Inc_Coappl",
+  "Prop_Mthly_Housing_Exp",
+  "Purch_Price",
+  "Other_Financing",
+  "Liquid_Assets",
+  "No_Commercial_Cred_Reports",
+  "Cred_Hist_Meets_Loan_Pol",
+  "No_Sep_Consum_Cred_Lines",
+  "Cred_Hist_Mtg_Pmts",
+  "Cred_Hist_Consum_Pmts"
+)
+
+# Rename columns for III. Follow-up Survey Data Pg.2
+colnames(hmda_data)[c(38:51)] <- c(
+  "Cred_Hist_Pub_Records",
+  "Debt_to_Inc_Ratio_Housing",
+  "Debt_to_Inc_Ratio_Total",
+  "Loan_Type_Fixed_Adjst",
+  "Loan_Term_Mths",
+  "Special_Loan_App_Program",
+  "Appraised_Value",
+  "Type_of_Prop_Purch",
+  "PMI_Sought",
+  "PMI_Denied",
+  "Gift_Grant_Down_Pmt",
+  "Co-signer",
+  "Unverifiable_Info",
+  "No_Reviews_By_Underwriter"
+)
+
+
+
+hmda_data$school[hmda_data$school == 999999.4] <- 12
+hmda_data$Dummy_School <- as.integer(hmda_data$school > 11)
+
+
+
+hmda_data$Marital_Status[is.na(hmda_data$Marital_Status)] <- 'M'  
+hmda_data$Dummy_Marital <- as.integer(hmda_data$Marital_Status == 'M')
+
+
+hmda_data$Dummy_Marital <- as.integer(hmda_data$Marital_Status == 'M')
+
+#dependent variable
+hmda_data$Approve <- ifelse(hmda_data$Action_Taken %in% c(1, 2), 1, 0)
+
+
+
+
+
+
+#### Visuals        B    #####
+# B.
+
+#  debt-to-income ratio , race, self-employed, marital status, and education visualizations
+
+selected_variables <- hmda_data[, c(
+  "Debt_to_Inc_Ratio_Housing",
+  "Appl_Race",
+  "Self_Empl",
+  "Dummy_Marital",
+  "Dummy_School"
+  
+)]
+
+summary_stats <- summary(selected_variables)
+print(summary_stats)
+
+
+
+
+
+
+#  count of applicants by race for Approval and Denial
+ggplot(hmda_data, aes(x = factor(Appl_Race), fill = factor(Approve))) +
+  geom_bar(position = "dodge") +
+  labs(title = "Count of Applicants by Race for Approval/Denial",
+       x = "Applicant Race",
+       y = "Count")
+
+# count of applicants by employment status for Approval and Denial
+ggplot(hmda_data, aes(x = factor(Self_Empl), fill = factor(Approve))) +
+  geom_bar(position = "dodge") +
+  labs(title = "Count of Applicants by Employment Status for Approval/Denial",
+       x = "Self Employed",
+       y = "Count")
+
+# count of applicants by school for Approval and Denial
+ggplot(hmda_data, aes(x = factor(school), fill = factor(Approve))) +
+  geom_bar(position = "dodge") +
+  labs(title = "Count of Applicants by School for Approval/Denial",
+       x = "School",
+       y = "Count")
+
+# count of applicants by school for Approval and Denial
+ggplot(hmda_data, aes(x = factor(Dummy_Marital), fill = factor(Approve))) +
+  geom_bar(position = "dodge") +
+  labs(title = "Count of Applicants by Martital Status for Approval/Denial",
+       x = "Marital Status",
+       y = "Count")
+
+hmda_data$Debt_to_Inc_Ratio_Housing2 <- cut(hmda_data$Debt_to_Inc_Ratio_Housing, breaks = c(0, 20, 40, 80, 120, 160, 200,300))
+
+# Plotting with grouped x-axis
+ggplot(hmda_data, aes(x = factor(Debt_to_Inc_Ratio_Housing2), fill = factor(Approve))) +
+  geom_bar(position = "dodge") +
+  labs(title = "Count of Applicants by Debt To Income Ratio for Approval/Denial",
+       x = "Debt to Income Ratio Group",
+       y = "Count")
+
+
+
+
+# 
+
+##### Interaction Variables ####
+
+library(dplyr)
+
+
+# 1. Loan_Amount / Appraised_Value
+hmda_data$LTV_Ratio <- hmda_data$Loan_Amount / hmda_data$Appraised_Value
+
+# 2. (Debt to income housing + Debt to income total) / 2
+hmda_data$Avg_Debt_Income <- (hmda_data$Debt_to_Inc_Ratio_Housing + hmda_data$Debt_to_Inc_Ratio_Total) / 2
+
+# 3. Loan Amount / Loan Term Months
+hmda_data$Loan_Term_Ratio <- hmda_data$Loan_Amount / hmda_data$Loan_Term_Mths
+
+# 4. Base Monthly Income (Applicant + Coapplicant)
+hmda_data$Total_Base_Mthly_Income <- hmda_data$Base_Empl_Mthly_Inc_Appl + hmda_data$Base_Empl_Mthly_Inc_Coappl
+
+# 5. Total Monthly Income (Applicant + Coapplicant)
+hmda_data$Total_Mthly_Income <- hmda_data$Total_Mthly_Inc_Appl + hmda_data$Total_Mthly_Inc_Coappl
+
+
+
+# 8. Calculate Income_to_HE_Ratio
+hmda_data$Income_to_HE_Ratio <- hmda_data$Total_Mthly_Income / hmda_data$Prop_Mthly_Housing_Exp
+
+
+
+# 9-11. Create dummy variables for Credit History - Mortgage Payments
+hmda_data <- hmda_data %>%
+  mutate(
+    no_history_0 = as.numeric(Cred_Hist_Mtg_Pmts == 2),
+    late_payments_1_2 = as.numeric(Cred_Hist_Mtg_Pmts == 3),
+    more_than_2_late_payments = as.numeric(Cred_Hist_Mtg_Pmts == 4)
+  )
+
+# 12-16. Create dummy variables for Credit History - Consumer Payments
+hmda_data <- hmda_data %>%
+  mutate(
+    one_two_slow_pay = as.numeric(Cred_Hist_Consum_Pmts == 2),
+    more_than_two_slow_pay_or_chronic = as.numeric(Cred_Hist_Consum_Pmts == 3),
+    insufficient_history = as.numeric(Cred_Hist_Consum_Pmts == 4),
+    delinquent_history = as.numeric(Cred_Hist_Consum_Pmts == 5),
+    serious_delinquencies = as.numeric(Cred_Hist_Consum_Pmts == 6)
+  )
+
+ 
+
+
+
+##### Base Model C.     ####
+
+model <- glm(Approve ~ Debt_to_Inc_Ratio_Housing + Self_Empl + 
+               Appl_Race + Dummy_Marital + school, data=hmda_data)
+
+
+
+# summary(hmda_data$Dummy_Marital)
+
+stargazer(model, type='text')
+
+pred_prob <- fitted.values(model)
+
+summary(pred_prob)
+
+
+## predicted probs check
+
+pred_prob2 <- predict.glm(model, type=c("response"))
+
+z <- data.frame(pred_prob,pred_prob2)
+
+
+
+### plot of predicted probs
+
+plot(density(pred_prob2), main="Predicted Probabilities")
+polygon(density(pred_prob2), col="pink")
+
+plot(hmda_data$Debt_to_Inc_Ratio_Housing, pred_prob2,
+     type = "p",
+     main = "Predicted Prob of Approval versus Debt-to-Income Ratio",
+     xlab = "DI Ratio",
+     ylab = "Predicted Probability of Approval",
+     col = "blue",
+     pch = 20)
+
+check <- data.frame(pred_prob2, hmda_data$Approve)
+
+plot(hmda_data$school, pred_prob2,
+     type = "p",
+     main = "Predicted Prob of Approval versus Debt-to-Income Ratio",
+     xlab = "DI Ratio",
+     ylab = "Predicted Probability of Approval",
+     col = "blue",
+     pch = 20)
+
+###  optimal cutoff
+optimal <- InformationValue::optimalCutoff(hmda_data$Approve, pred_prob2)[1]
+print(optimal)
+
+class_prediction <- ifelse(pred_prob2 > 0.80, 1, 0)
+class_prediction2 <- ifelse(pred_prob2 > optimal, 1, 0)
+
+InformationValue::confusionMatrix(hmda_data$Approve, class_prediction)
+InformationValue::confusionMatrix(hmda_data$Approve, class_prediction2)
+
+caret::confusionMatrix(data = factor(class_prediction, levels = c(0, 1)),
+                       reference = factor(hmda_data$Approve, levels = c(0, 1)),positive="1")
+
+
+confmat <- table(class_prediction, hmda_data$Approve)
+confmat
+
+fpr <- confmat[2, 1] / sum(confmat[ , 1])
+fnr <- confmat[1, 2] / sum(confmat[, 2])
+
+
+fpr
+fnr
+
+caret::confusionMatrix(data = factor(class_prediction2, levels = c(0, 1)),
+                       reference = factor(hmda_data$Approve, levels = c(0, 1)),positive="1")
+
+confmat <- table(class_prediction2, hmda_data$Approve)
+confmat
+
+
+fpr <- confmat[2, 1] / sum(confmat[ , 1])
+fnr <- confmat[1, 2] / sum(confmat[, 2])
+
+
+fpr
+fnr
+
+#calculate total misclassification error rate
+misClassError(hmda_data$Approve, class_prediction)
+misClassError(hmda_data$Approve, class_prediction2)
+
+
+# Calculate precision
+precision(hmda_data$Approve, class_prediction)
+precision(hmda_data$Approve, class_prediction2)
+
+
+
+
+
+perf <- performance(prediction(pred_prob2, hmda_data$Approve), "tpr", "fpr")
+
+plot(perf, colorize=TRUE, ADD= TRUE)
+abline(a=0, b=1)
+
+
+plotROC(hmda_data$Approve, pred_prob2)
+
+
+
+
+
+##### Model 2    D#####
+library(stargazer)
+stargazer(hmda_data, type='text')
+
+
+
+
+library(caret)
+library(pROC)
+
+
+
+
+
+model_2 <- glm(Approve ~ poly(LTV_Ratio, degree = poly_degree, raw = TRUE) +
+                 Avg_Debt_Income +Loan_Term_Ratio + 
+                 Dummy_School + Dummy_Marital +late_payments_1_2 + 
+                 more_than_2_late_payments , data = hmda_data, family = binomial)
+
+stargazer(model_2, type='text')
+
+pred_probabilities <- predict.glm(model_2, type=c("response"))
+
+perf2 <- performance(prediction(pred_probabilities, hmda_data$Approve), "tpr", "fpr")
+
+plot(perf2, colorize=TRUE, add=TRUE)
+
+
+#  degree  polynomial
+poly_degree <- 2 
+
+#  model formula
+formula <- as.formula(paste("Approve ~ poly(LTV_Ratio, degree = poly_degree, raw = TRUE) +",
+                            "Avg_Debt_Income + Loan_Term_Ratio +",
+                            "Dummy_School + Dummy_Marital + late_payments_1_2 +",
+                            "more_than_2_late_payments"))
+
+set.seed(123)
+
+# cross-validation 10 folds
+cv_folds <- createFolds(hmda_data$Approve, k = 10, list = TRUE, returnTrain = FALSE)
+
+# storing confusion matrices, misclassification rates, auc values
+confusion_matrices <- list()
+misclassification_rates <- numeric(length = length(cv_folds))
+auc_values <- numeric(length = length(cv_folds))
+
+# cross-validation
+
+# It iterates over different folds in the cross-validation process, fits logistic
+# regression models (cv_model), makes predictions on the test set, calculates
+# misclassification rates, and stores the confusion matrices, misclassification rates,
+# and AUC values for each fold in the corresponding lists
+
+# I used this loop in my future models as well
+
+for (i in seq_along(cv_folds)) {
+  # Subset data for each fold
+  train_data <- hmda_data[-cv_folds[[i]], ]
+  test_data <- hmda_data[cv_folds[[i]], ]
+  
+  # Fit  model
+  cv_model <- glm(formula, data = train_data, family = "binomial")
+  
+  # make predictions on the test set
+  pred_probs <- predict(cv_model, newdata = test_data, type = "response")
+  
+  # convert probabilities to class predictions
+  pred_class <- ifelse(pred_probs > 0.8, 1, 0)
+  
+  # create confusion matrix
+  confusion_matrices[[i]] <- caret::confusionMatrix(data = factor(pred_class, levels = c(0, 1)),
+                                             reference = factor(test_data$Approve, levels = c(0, 1)),positive="1")
+  
+
+
+  # Calculate mis-classification rate
+  misclassification_rates[i] <- 1 - confusion_matrices[[i]]$overall["Accuracy"]
+  
+  # Calculate AUC
+  auc_values[i] <- roc(test_data$Approve, pred_probs)$auc
+}
+
+# Display confusion matrices
+for (i in seq_along(confusion_matrices)) {
+  cat("Confusion Matrix for Fold", i, ":\n")
+  print(confusion_matrices[[i]])
+}
+
+# Display misclassification rates for each fold
+cat("Misclassification Rates for Each Fold:\n")
+print(misclassification_rates)
+
+# Calculate average misclassification rate across folds
+average_misclassification_rate <- mean(misclassification_rates)
+cat("Average Misclassification Rate:", average_misclassification_rate, "\n")
+
+# Display AUC values for each fold
+cat("AUC Values for Each Fold:\n")
+print(auc_values)
+
+# Calculate average AUC across folds
+average_auc <- mean(auc_values)
+cat("Average AUC:", average_auc, "\n")
+
+
+
+
+
+
+#### Model 3 ####
+
+model_3 <- glm(Approve ~ poly(No_Dependents_Claimed, degree = poly_degree, raw = TRUE) +
+                 poly(LTV_Ratio,3, raw = TRUE)
+               + Avg_Debt_Income +Loan_Term_Ratio + Unverifiable_Info + Loan_Amount +
+                 Dummy_School + Dummy_Marital + Self_Empl + Yrs_Empl_Line_Work + uria +
+                 late_payments_1_2 + 
+                 more_than_2_late_payments +
+                 one_two_slow_pay +
+                 more_than_two_slow_pay_or_chronic+
+                 insufficient_history+
+                 delinquent_history +
+                 serious_delinquencies, data = hmda_data, family = binomial)
+
+stargazer(model_3, type='text')
+
+set.seed(123)
+
+# model formula
+formula <- as.formula(paste("Approve ~ poly(No_Dependents_Claimed, 2, raw = TRUE) +",
+                            "poly(LTV_Ratio,3, raw = TRUE)",
+                            "+ Avg_Debt_Income +Loan_Term_Ratio + Unverifiable_Info + Loan_Amount +",
+                            "Dummy_School + Dummy_Marital + Self_Empl + Yrs_Empl_Line_Work + uria +",
+                            "late_payments_1_2 + more_than_2_late_payments + one_two_slow_pay +",
+                            "more_than_two_slow_pay_or_chronic+ insufficient_history + delinquent_history +",
+                            "serious_delinquencies"))
+
+# custom cross-validation
+cv_folds <- createFolds(hmda_data$Approve, k = 10, list = TRUE, returnTrain = FALSE)
+
+# store confusion matrices misclassification rates auc
+confusion_matrices <- list()
+misclassification_rates <- numeric(length = length(cv_folds))
+auc_values <- numeric(length = length(cv_folds))
+
+# Perform cross-validation
+for (i in seq_along(cv_folds)) {
+  # Subset data for each fold
+  train_data <- hmda_data[-cv_folds[[i]], ]
+  test_data <- hmda_data[cv_folds[[i]], ]
+  
+  # Fit model
+  cv_model <- glm(formula, data = train_data, family = "binomial")
+  
+  # Make predictions on the test set
+  pred_probs <- predict(cv_model, newdata = test_data, type = "response")
+  
+  # Convert probabilities to class predictions
+  pred_class <- ifelse(pred_probs > 0.8, 1, 0)
+  
+  # Create confusion matrix
+  confusion_matrices[[i]] <- caret::confusionMatrix(data = factor(pred_class, levels = c(0, 1)),
+                                                    reference = factor(test_data$Approve, levels = c(0, 1)),positive="1")
+  
+  
+  
+  # Calculate misclassification rate
+  misclassification_rates[i] <- 1 - confusion_matrices[[i]]$overall["Accuracy"]
+  
+  
+  # Calculate AUC
+  auc_values[i] <- roc(test_data$Approve, pred_probs)$auc
+  
+  
+}
+
+# Display confusion matrices
+for (i in seq_along(confusion_matrices)) {
+  cat("Confusion Matrix for Fold", i, ":\n")
+  print(confusion_matrices[[i]])
+}
+
+# Display misclassification rates for each fold
+cat("Misclassification Rates for Each Fold:\n")
+print(misclassification_rates)
+
+# Calculate average misclassification rate across folds
+average_misclassification_rate <- mean(misclassification_rates)
+cat("Average Misclassification Rate:", average_misclassification_rate, "\n")
+
+# Display AUC values for each fold
+cat("AUC Values for Each Fold:\n")
+print(auc_values)
+
+# Calculate average AUC across folds
+average_auc <- mean(auc_values)
+cat("Average AUC:", average_auc, "\n")
+
+plot(density(pred_probs), main="Predicted Probabilities")
+polygon(density(pred_probs), col="pink")
+
+
+
+
+
+
+##### Model 4 ####
+write.csv(hmda_data, "C:/Users/simpk/OneDrive/Desktop/ECO4444/R/DATAfile.csv", row.names = FALSE)
+
+
+# Interaction Variable 1: Log-transformed Loan Amount
+hmda_data$Log_Loan_Amount <- log(hmda_data$Loan_Amount + 1)  # Adding 1 to avoid log(0)
+
+# Interaction Variable 2: Squared Loan Amount
+hmda_data$Loan_Amount_Squared <- hmda_data$Loan_Amount^2
+
+# Interaction Variable 3: Cubic Loan Amount
+hmda_data$Loan_Amount_Cubed <- hmda_data$Loan_Amount^3
+
+# Interaction Variable 4: Log-transformed Total Monthly Income
+hmda_data$Log_Total_Mthly_Income <- log(hmda_data$Total_Mthly_Inc_Appl + 1)  # Adding 1 to avoid log(0)
+
+# Interaction Variable 5: Squared Total Monthly Income
+hmda_data$Total_Mthly_Income_Squared <- hmda_data$Total_Mthly_Inc_Appl^2
+
+# Interaction Variable 6: Cubic Total Monthly Income
+hmda_data$Total_Mthly_Income_Cubed <- hmda_data$Total_Mthly_Inc_Appl^3
+
+# Interaction Variable 7: Log-transformed Debt to Income Ratio
+hmda_data$Log_Debt_to_Income_Ratio <- log(hmda_data$Debt_to_Inc_Ratio_Housing + 1)  # Adding 1 to avoid log(0)
+
+# Interaction Variable 8: Squared Debt to Income Ratio
+hmda_data$Debt_to_Income_Ratio_Squared <- hmda_data$Debt_to_Inc_Ratio_Housing^2
+
+# Interaction Variable 9: Cubic Debt to Income Ratio
+hmda_data$Debt_to_Income_Ratio_Cubed <- hmda_data$Debt_to_Inc_Ratio_Housing^3
+
+model_4 <- glm(Approve ~ poly(LTV_Ratio, 3, raw = TRUE) + Avg_Debt_Income + 
+                 Loan_Term_Ratio + Unverifiable_Info + Dummy_School + Dummy_Marital + 
+                 Self_Empl + uria + one_two_slow_pay + more_than_two_slow_pay_or_chronic + 
+                 insufficient_history + delinquent_history + serious_delinquencies + 
+                 Log_Debt_to_Income_Ratio, 
+               data = hmda_data, family = binomial)
+
+
+library(car)
+car::vif(model_4)
+
+stargazer(model_4, type='text')
+
+AIC(model_3, model_4)
+BIC(model_3, model_4)
+
+set.seed(123)
+
+# model formula
+formula <- as.formula(paste("Approve ~ poly(LTV_Ratio, 3, raw = TRUE) + Avg_Debt_Income + 
+                 Loan_Term_Ratio + Unverifiable_Info + Dummy_School + Dummy_Marital + 
+                 Self_Empl + uria + one_two_slow_pay + more_than_two_slow_pay_or_chronic + 
+                 insufficient_history + delinquent_history + serious_delinquencies + 
+                 Log_Debt_to_Income_Ratio"))
+
+# custom cross-validation
+cv_folds <- createFolds(hmda_data$Approve, k = 10, list = TRUE, returnTrain = FALSE)
+
+# store confusion matrices  misclassification rates auc
+confusion_matrices <- list()
+misclassification_rates <- numeric(length = length(cv_folds))
+auc_values <- numeric(length = length(cv_folds))
+
+# perform cross-validation
+for (i in seq_along(cv_folds)) {
+  # Subset data for each fold
+  train_data <- hmda_data[-cv_folds[[i]], ]
+  test_data <- hmda_data[cv_folds[[i]], ]
+  
+  # Fit lm model
+  cv_model <- glm(formula, data = train_data, family = "binomial")
+  
+  # Make predictions on the test set
+  pred_probs <- predict(cv_model, newdata = test_data, type = "response")
+  
+  # Convert probabilities to class predictions
+  pred_class <- ifelse(pred_probs > 0.8, 1, 0)
+  
+  # create confusion matrix
+  confusion_matrices[[i]] <- caret::confusionMatrix(data = factor(pred_class, levels = c(0, 1)),
+                                                    reference = factor(test_data$Approve, levels = c(0, 1)),positive="1")
+  
+  
+  
+  # Calculate misclassification rate
+  misclassification_rates[i] <- 1 - confusion_matrices[[i]]$overall["Accuracy"]
+  
+  
+  # Calculate AUC
+  auc_values[i] <- roc(test_data$Approve, pred_probs)$auc
+  
+  
+}
+
+# Display confusion matrices
+for (i in seq_along(confusion_matrices)) {
+  cat("Confusion Matrix for Fold", i, ":\n")
+  print(confusion_matrices[[i]])
+}
+
+# Display misclassification rates for each fold
+cat("Misclassification Rates for Each Fold:\n")
+print(misclassification_rates)
+
+# Calculate average misclassification rate across folds
+average_misclassification_rate <- mean(misclassification_rates)
+cat("Average Misclassification Rate:", average_misclassification_rate, "\n")
+
+# Display AUC values for each fold
+cat("AUC Values for Each Fold:\n")
+print(auc_values)
+
+# Calculate average AUC across folds
+average_auc <- mean(auc_values)
+cat("Average AUC:", average_auc, "\n")
+
+plot(density(pred_probs), main="Predicted Probabilities")
+polygon(density(pred_probs), col="pink")
+
+
+
+
+# /*model_4_pulled <- glm(Approve ~ poly(No_Dependents_Claimed, degree = poly_degree, raw = TRUE) +
+#                  poly(LTV_Ratio, 3, raw = TRUE) +
+#                  Avg_Debt_Income + Loan_Term_Ratio + Unverifiable_Info + Loan_Amount +
+#                  Dummy_School + Dummy_Marital + Self_Empl + Yrs_Empl_Line_Work + uria +
+#                  late_payments_1_2 +
+#                    more_than_2_late_payments +
+#                    one_two_slow_pay +
+#                  more_than_two_slow_pay_or_chronic +
+#                  insufficient_history +
+#                  delinquent_history +
+#                  serious_delinquencies +
+#                  Log_Total_Mthly_Income +
+#                  Log_Debt_to_Income_Ratio +
+#                 Debt_to_Income_Ratio_Cubed,
+#                 data = hmda_data, family = binomial)
+
+
+
+# reduced_model <- step(model_6, direction = "backward")
+
+final_model <- glm(Approve ~ poly(LTV_Ratio, 3, raw = TRUE) + Avg_Debt_Income + 
+                 Loan_Term_Ratio + Unverifiable_Info + Dummy_School + Dummy_Marital + 
+                 Self_Empl + uria + one_two_slow_pay + more_than_two_slow_pay_or_chronic + 
+                 insufficient_history + delinquent_history + serious_delinquencies + 
+                 Log_Debt_to_Income_Ratio, 
+               data = hmda_data, family = binomial)
+
+##### Final Model Estimation with Full Dataset   E ####
+
+
+final_model <- glm(Approve ~ poly(LTV_Ratio, 3, raw = TRUE) + Avg_Debt_Income + 
+                     Loan_Term_Ratio + Unverifiable_Info + Dummy_School + Dummy_Marital + 
+                     Self_Empl + uria + one_two_slow_pay + more_than_two_slow_pay_or_chronic + 
+                     insufficient_history + delinquent_history + serious_delinquencies + 
+                     Log_Debt_to_Income_Ratio, 
+                   data = hmda_data, family = binomial)
+
+
+
+pred_prob <- fitted.values(final_model)
+
+summary(pred_prob)
+
+plot(density(pred_prob), main="Predicted Probabilities")
+polygon(density(pred_prob), col="pink")
+
+# check
+check <- data.frame(pred_prob, hmda_data$Approve)
+
+# Calculate logits
+logits <- log(pred_prob / (1 - pred_prob))
+
+# Display the first few logits
+head(logits)
+
+# Select only numeric predictors
+numeric_predictors <- hmda_data %>%
+  dplyr::select_if(is.numeric) 
+
+library(tidyr)
+# Bind the logit and tidying the data for plot
+logit_data <- numeric_predictors %>%
+  mutate(logit = log(pred_prob / (1 - pred_prob))) %>%
+  gather(key = "predictors", value = "predictor.value", -logit)
+
+ggplot(logit_data, aes(logit, predictor.value))+
+  geom_point(size = 0.5, alpha = 0.5) +
+  geom_smooth(method = "loess") + 
+  theme_bw() + 
+  facet_wrap(~predictors, scales = "free_y")
+
+
+
+
+costfunc = function(Approve, pred_prob){
+  weight1 = 1               # The weight for approve=1 but classified as 0 (false negative)
+  weight0 = 3               # The weight for approve=0 but classified as 1 (false positive)
+  c1 <- (Approve==1)&(pred_prob<optimal_cutoff)     # The 'count' for approve=1 but classified as 0 (false negatives)
+  c0 <- (Approve==0)&(pred_prob>=optimal_cutoff)    # The 'count' for approve=0 but classified as 1 (false positives)
+  cost <- mean(weight1*c1 + weight0*c0)
+  return(cost)              
+} 
+
+
+
+prob_seq <- seq(0.01, 1, 0.01) 
+
+cv_cost = rep(0, length(prob_seq))  
+for(i in 1:length(prob_seq)){ 
+  optimal_cutoff = prob_seq[i]
+  set.seed(123)
+  cv_cost[i] = cv.glm(data=hmda_data, glmfit=final_model, cost = costfunc, K=10)$delta[1]
+}
+
+
+plot(prob_seq, cv_cost)
+
+
+
+pred_prob <- predict.glm(final_model, type=c("response"))
+
+# Optimal Cutoff Information Value
+
+optimal <- optimalCutoff(hmda_data$Approve, pred_prob)[1]
+print(optimal)
+
+optimal_2 <- optimalCutoff(hmda_data$Approve, pred_prob, optimiseFor = "Both", 
+                           returnDiagnostics = TRUE)$sensitivityTable
+
+check2 <- data.frame(optimal_2)
+check2[, 2:3] <- apply(check2[, 2:3], 2, function(x) as.numeric(as.character(x)))
+
+# Check the data type of each column
+sapply(check2, class)
+
+# Optimal Cutoff Calculated
+optimal_cutoff_cv = prob_seq[which(cv_cost==min(cv_cost))]
+optimal_cutoff_cv
+min(cv_cost)
+
+
+
+class_prediction <- ifelse(pred_prob > .8, 1, 0)
+class_prediction2 <- ifelse(pred_prob > optimal, 1, 0)
+
+
+
+InformationValue::confusionMatrix(hmda_data$Approve, class_prediction)
+InformationValue::confusionMatrix(hmda_data$Approve, class_prediction2)
+
+caret::confusionMatrix(data = factor(class_prediction, levels = c(0, 1)),
+                       reference = factor(hmda_data$Approve, levels = c(0, 1)),positive="1")
+
+
+confmat <- table(class_prediction, hmda_data$Approve)
+confmat
+
+fpr <- confmat[2, 1] / sum(confmat[ , 1])
+fnr <- confmat[1, 2] / sum(confmat[, 2])
+
+
+fpr
+fnr
+
+caret::confusionMatrix(data = factor(class_prediction2, levels = c(0, 1)),
+                       reference = factor(hmda_data$Approve, levels = c(0, 1)),positive="1")
+
+confmat <- table(class_prediction2, hmda_data$Approve)
+confmat
+
+
+fpr <- confmat[2, 1] / sum(confmat[ , 1])
+fnr <- confmat[1, 2] / sum(confmat[, 2])
+
+
+fpr
+fnr
+
+
+#calculate total misclassification error rate
+misClassError(hmda_data$Approve, class_prediction)
+misClassError(hmda_data$Approve, class_prediction2)
+
+
+
+
+# ROC and AUC
+perf3 <- performance(prediction(pred_prob, hmda_data$Approve), "tpr", "fpr")
+
+plot(perf3, colorize=TRUE)
+abline(a=0, b=1)
+
+
+plotROC(hmda_data$Approve, pred_prob)
